@@ -1,0 +1,676 @@
+diff --git a/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/main/java/org/apache/hadoop/mapred/TaskAttemptListenerImpl.java b/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/main/java/org/apache/hadoop/mapred/TaskAttemptListenerImpl.java
+index 12e4bed7fa..7ed6607e4a 100644
+--- a/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/main/java/org/apache/hadoop/mapred/TaskAttemptListenerImpl.java
++++ b/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/main/java/org/apache/hadoop/mapred/TaskAttemptListenerImpl.java
+@@ -279,10 +279,8 @@ public void shuffleError(TaskAttemptID taskAttemptID, String message) throws IOE
+   public MapTaskCompletionEventsUpdate getMapCompletionEvents(
+       JobID jobIdentifier, int startIndex, int maxEvents,
+       TaskAttemptID taskAttemptID) throws IOException {
+-    if (LOG.isDebugEnabled()) {
+-      LOG.debug("MapCompletionEvents request from " + taskAttemptID.toString()
+-              + ". startIndex " + startIndex + " maxEvents " + maxEvents);
+-    }
++    LOG.info("MapCompletionEvents request from " + taskAttemptID.toString()
++        + ". startIndex " + startIndex + " maxEvents " + maxEvents);
+ 
+     // TODO: shouldReset is never used. See TT. Ask for Removal.
+     boolean shouldReset = false;
+diff --git a/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-api/src/main/java/org/apache/hadoop/yarn/api/ApplicationConstants.java b/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-api/src/main/java/org/apache/hadoop/yarn/api/ApplicationConstants.java
+index 6cff786a5f..b2d765ae30 100644
+--- a/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-api/src/main/java/org/apache/hadoop/yarn/api/ApplicationConstants.java
++++ b/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-api/src/main/java/org/apache/hadoop/yarn/api/ApplicationConstants.java
+@@ -105,12 +105,6 @@
+   public static final String MAX_APP_ATTEMPTS_ENV = "MAX_APP_ATTEMPTS";
+ 
+   /**
+-   * Tensorflow gpu bind env parameter
+-   * CUDA_VISIBLE_DEVICES
+-   */
+-  public static final String GPU_BIND = "CUDA_VISIBLE_DEVICES";
+-
+-  /**
+    * Environment for Applications.
+    * 
+    * Some of the environment variables for applications are <em>final</em> 
+diff --git a/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-nodemanager/src/main/java/org/apache/hadoop/yarn/server/nodemanager/NodeManager.java b/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-nodemanager/src/main/java/org/apache/hadoop/yarn/server/nodemanager/NodeManager.java
+index 4f3b9b7bbb..3df02424e3 100644
+--- a/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-nodemanager/src/main/java/org/apache/hadoop/yarn/server/nodemanager/NodeManager.java
++++ b/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-nodemanager/src/main/java/org/apache/hadoop/yarn/server/nodemanager/NodeManager.java
+@@ -356,7 +356,6 @@ public void run() {
+     private final NMStateStoreService stateStore;
+     private boolean isDecommissioned = false;
+     private NodeStatusUpdater nodeStatusUpdater;
+-    private Map<String, String> containerToGcores;
+ 
+     public NMContext(NMContainerTokenSecretManager containerTokenSecretManager,
+         NMTokenSecretManagerInNM nmTokenSecretManager,
+@@ -370,7 +369,6 @@ public NMContext(NMContainerTokenSecretManager containerTokenSecretManager,
+       this.nodeHealthStatus.setHealthReport("Healthy");
+       this.nodeHealthStatus.setLastHealthReportTime(System.currentTimeMillis());
+       this.stateStore = stateStore;
+-      this.containerToGcores = new ConcurrentHashMap<String, String>();
+     }
+ 
+     /**
+@@ -416,10 +414,6 @@ public ContainerManagementProtocol getContainerManager() {
+       return this.containerManager;
+     }
+ 
+-    public Map<String, String> getContainerToGcores() {
+-      return this.containerToGcores;
+-    }
+-
+     public void setContainerManager(ContainerManagementProtocol containerManager) {
+       this.containerManager = containerManager;
+     }
+diff --git a/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-nodemanager/src/main/java/org/apache/hadoop/yarn/server/nodemanager/containermanager/ContainerManagerImpl.java b/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-nodemanager/src/main/java/org/apache/hadoop/yarn/server/nodemanager/containermanager/ContainerManagerImpl.java
+index 2a50948a44..0c8ed05690 100644
+--- a/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-nodemanager/src/main/java/org/apache/hadoop/yarn/server/nodemanager/containermanager/ContainerManagerImpl.java
++++ b/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-nodemanager/src/main/java/org/apache/hadoop/yarn/server/nodemanager/containermanager/ContainerManagerImpl.java
+@@ -115,8 +115,6 @@
+ import org.apache.hadoop.yarn.server.nodemanager.containermanager.container.ContainerEventType;
+ import org.apache.hadoop.yarn.server.nodemanager.containermanager.container.ContainerImpl;
+ import org.apache.hadoop.yarn.server.nodemanager.containermanager.container.ContainerKillEvent;
+-import org.apache.hadoop.yarn.server.nodemanager.containermanager.gpumanager.GCoreManager;
+-import org.apache.hadoop.yarn.server.nodemanager.containermanager.gpumanager.GCoreManagerImpl;
+ import org.apache.hadoop.yarn.server.nodemanager.containermanager.launcher.ContainersLauncher;
+ import org.apache.hadoop.yarn.server.nodemanager.containermanager.launcher.ContainersLauncherEventType;
+ import org.apache.hadoop.yarn.server.nodemanager.containermanager.localizer.ResourceLocalizationService;
+@@ -168,7 +166,6 @@
+   private final ApplicationACLsManager aclsManager;
+ 
+   private final DeletionService deletionService;
+-  private GCoreManager gCoreManager;
+   private AtomicBoolean blockNewContainerRequests = new AtomicBoolean(false);
+   private boolean serviceStopped = false;
+   private final ReadLock readLock;
+@@ -230,7 +227,7 @@ public void serviceInit(Configuration conf) throws Exception {
+       createLogHandler(conf, this.context, this.deletionService);
+     addIfService(logHandler);
+     dispatcher.register(LogHandlerEventType.class, logHandler);
+-
++    
+     // add the shared cache upload service (it will do nothing if the shared
+     // cache is disabled)
+     SharedCacheUploadService sharedCacheUploader =
+@@ -245,12 +242,6 @@ public void serviceInit(Configuration conf) throws Exception {
+             YarnConfiguration.DEFAULT_NM_PROCESS_KILL_WAIT_MS) +
+         SHUTDOWN_CLEANUP_SLOP_MS;
+ 
+-
+-    if (conf.getInt(YarnConfiguration.NM_GCORES, 0) != 0) {
+-      this.gCoreManager = new GCoreManagerImpl(context);
+-      addService(this.gCoreManager);
+-    }
+-
+     super.serviceInit(conf);
+     recover();
+   }
+@@ -819,6 +810,7 @@ private void startContainerInternal(NMTokenIdentifier nmTokenIdentifier,
+     LOG.info("Start request for " + containerIdStr + " by user " + user);
+ 
+     ContainerLaunchContext launchContext = request.getContainerLaunchContext();
++
+     Map<String, ByteBuffer> serviceData = getAuxServiceMetaData();
+     if (launchContext.getServiceData()!=null && 
+         !launchContext.getServiceData().isEmpty()) {
+@@ -1152,10 +1144,6 @@ public Context getContext() {
+     return this.context;
+   }
+ 
+-  public GCoreManager getGCoreManager() {
+-    return this.gCoreManager;
+-  }
+-
+   public Map<String, ByteBuffer> getAuxServiceMetaData() {
+     return this.auxiliaryServices.getMetaData();
+   }
+diff --git a/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-nodemanager/src/main/java/org/apache/hadoop/yarn/server/nodemanager/containermanager/container/ContainerImpl.java b/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-nodemanager/src/main/java/org/apache/hadoop/yarn/server/nodemanager/containermanager/container/ContainerImpl.java
+index 9f908f5911..216ec87dad 100644
+--- a/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-nodemanager/src/main/java/org/apache/hadoop/yarn/server/nodemanager/containermanager/container/ContainerImpl.java
++++ b/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-nodemanager/src/main/java/org/apache/hadoop/yarn/server/nodemanager/containermanager/container/ContainerImpl.java
+@@ -52,12 +52,9 @@
+ import org.apache.hadoop.yarn.server.api.protocolrecords.NMContainerStatus;
+ import org.apache.hadoop.yarn.server.nodemanager.NMAuditLogger;
+ import org.apache.hadoop.yarn.server.nodemanager.NMAuditLogger.AuditConstants;
+-import org.apache.hadoop.yarn.server.nodemanager.NodeManager;
+ import org.apache.hadoop.yarn.server.nodemanager.containermanager.AuxServicesEvent;
+ import org.apache.hadoop.yarn.server.nodemanager.containermanager.AuxServicesEventType;
+-import org.apache.hadoop.yarn.server.nodemanager.containermanager.ContainerManagerImpl;
+ import org.apache.hadoop.yarn.server.nodemanager.containermanager.application.ApplicationContainerFinishedEvent;
+-import org.apache.hadoop.yarn.server.nodemanager.containermanager.gpumanager.GCoreManager;
+ import org.apache.hadoop.yarn.server.nodemanager.containermanager.launcher.ContainersLauncherEvent;
+ import org.apache.hadoop.yarn.server.nodemanager.containermanager.launcher.ContainersLauncherEventType;
+ import org.apache.hadoop.yarn.server.nodemanager.containermanager.localizer.LocalResourceRequest;
+@@ -794,7 +791,7 @@ public ExitedWithSuccessTransition(boolean clCleanupRequired) {
+     public void transition(ContainerImpl container, ContainerEvent event) {
+       // Set exit code to 0 on success    	
+       container.exitCode = 0;
+-
++    	
+       // TODO: Add containerWorkDir to the deletion service.
+ 
+       if (clCleanupRequired) {
+@@ -804,13 +801,6 @@ public void transition(ContainerImpl container, ContainerEvent event) {
+       }
+ 
+       container.cleanup();
+-
+-      // release gcores
+-      String occupated = ((NodeManager.NMContext)container.context).getContainerToGcores().remove(container.getContainerId());
+-      if (occupated != null) {
+-        GCoreManager gm = ((ContainerManagerImpl)container.context.getContainerManager()).getGCoreManager();
+-        gm.releaseGCore(occupated);
+-      }
+     }
+   }
+ 
+@@ -820,6 +810,7 @@ public void transition(ContainerImpl container, ContainerEvent event) {
+    **/
+   @SuppressWarnings("unchecked")  // dispatcher not typed
+   static class ExitedWithFailureTransition extends ContainerTransition {
++
+     boolean clCleanupRequired;
+ 
+     public ExitedWithFailureTransition(boolean clCleanupRequired) {
+@@ -844,13 +835,6 @@ public void transition(ContainerImpl container, ContainerEvent event) {
+       }
+ 
+       container.cleanup();
+-
+-      // release gcores
+-      String occupated = ((NodeManager.NMContext)container.context).getContainerToGcores().remove(container.getContainerId());
+-      if (occupated != null) {
+-        GCoreManager gm = ((ContainerManagerImpl)container.context.getContainerManager()).getGCoreManager();
+-        gm.releaseGCore(occupated);
+-      }
+     }
+   }
+ 
+@@ -947,13 +931,6 @@ public void transition(ContainerImpl container, ContainerEvent event) {
+       ContainerKillEvent killEvent = (ContainerKillEvent) event;
+       container.addDiagnostics(killEvent.getDiagnostic(), "\n");
+       container.exitCode = killEvent.getContainerExitStatus();
+-
+-      // release gcores
+-      String occupated = ((NodeManager.NMContext)container.context).getContainerToGcores().remove(container.getContainerId());
+-      if (occupated != null) {
+-        GCoreManager gm = ((ContainerManagerImpl)container.context.getContainerManager()).getGCoreManager();
+-        gm.releaseGCore(occupated);
+-      }
+     }
+   }
+ 
+diff --git a/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-nodemanager/src/main/java/org/apache/hadoop/yarn/server/nodemanager/containermanager/gpumanager/GCoreManager.java b/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-nodemanager/src/main/java/org/apache/hadoop/yarn/server/nodemanager/containermanager/gpumanager/GCoreManager.java
+deleted file mode 100644
+index 4d24c07032..0000000000
+--- a/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-nodemanager/src/main/java/org/apache/hadoop/yarn/server/nodemanager/containermanager/gpumanager/GCoreManager.java
++++ /dev/null
+@@ -1,41 +0,0 @@
+-/**
+- * Licensed to the Apache Software Foundation (ASF) under one
+- * or more contributor license agreements.  See the NOTICE file
+- * distributed with this work for additional information
+- * regarding copyright ownership.  The ASF licenses this file
+- * to you under the Apache License, Version 2.0 (the
+- * "License"); you may not use this file except in compliance
+- * with the License.  You may obtain a copy of the License at
+- *
+- *     http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- *
+- * Also created by yuanfeng.
+- */
+-
+-package org.apache.hadoop.yarn.server.nodemanager.containermanager.gpumanager;
+-
+-import org.apache.hadoop.service.Service;
+-
+-public interface GCoreManager extends Service {
+-
+-    /**
+-     * Aquire gpu tuples regard as the gpu anitifity.
+-     * base on the count of cores requested.
+-     * @param num
+-     * @return
+-     */
+-    public String aquireGCore(int num) throws Exception;
+-
+-    /**
+-     * Releas cores to manager.
+-     * @param cores
+-     * @return
+-     */
+-    public boolean releaseGCore(String cores);
+-}
+diff --git a/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-nodemanager/src/main/java/org/apache/hadoop/yarn/server/nodemanager/containermanager/gpumanager/GCoreManagerImpl.java b/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-nodemanager/src/main/java/org/apache/hadoop/yarn/server/nodemanager/containermanager/gpumanager/GCoreManagerImpl.java
+deleted file mode 100644
+index 00d85c786d..0000000000
+--- a/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-nodemanager/src/main/java/org/apache/hadoop/yarn/server/nodemanager/containermanager/gpumanager/GCoreManagerImpl.java
++++ /dev/null
+@@ -1,303 +0,0 @@
+-/**
+- * Licensed to the Apache Software Foundation (ASF) under one
+- * or more contributor license agreements.  See the NOTICE file
+- * distributed with this work for additional information
+- * regarding copyright ownership.  The ASF licenses this file
+- * to you under the Apache License, Version 2.0 (the
+- * "License"); you may not use this file except in compliance
+- * with the License.  You may obtain a copy of the License at
+- *
+- *     http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- *
+- * Also created by yuanfeng.
+- */
+-
+-package org.apache.hadoop.yarn.server.nodemanager.containermanager.gpumanager;
+-
+-import com.google.common.collect.Sets;
+-import org.apache.commons.logging.Log;
+-import org.apache.commons.logging.LogFactory;
+-import org.apache.hadoop.conf.Configuration;
+-import org.apache.hadoop.service.AbstractService;
+-import org.apache.hadoop.util.Shell;
+-import org.apache.hadoop.yarn.server.nodemanager.Context;
+-
+-import java.security.InvalidParameterException;
+-import java.util.ArrayList;
+-import java.util.Arrays;
+-import java.util.Collections;
+-import java.util.Comparator;
+-import java.util.HashSet;
+-import java.util.Set;
+-import java.util.TreeSet;
+-import java.util.regex.Matcher;
+-import java.util.regex.Pattern;
+-
+-public class GCoreManagerImpl extends AbstractService implements GCoreManager {
+-
+-    private static final Log LOG = LogFactory.getLog(GCoreManagerImpl.class);
+-
+-    private static final Comparator<SameCpuGroup> comparator = new Comparator<SameCpuGroup>() {
+-        @Override
+-        public int compare(SameCpuGroup o1, SameCpuGroup o2) {
+-            return Integer.compare(o1.getMemberSize(), o2.getMemberSize());
+-        }
+-    };
+-
+-    private static final Comparator<SameCpuGroup> anti_comparator = new Comparator<SameCpuGroup>() {
+-        @Override
+-        public int compare(SameCpuGroup o1, SameCpuGroup o2) {
+-            return -(Integer.compare(o1.getMemberSize(), o2.getMemberSize()));
+-        }
+-    };
+-
+-    private Context context;
+-    private Configuration conf;
+-    // all cores collection contain single and group ones
+-    private ArrayList<String> baseList;
+-    private Set<SameCpuGroup> groups;
+-
+-    public GCoreManagerImpl(Context context) {
+-        super(GCoreManagerImpl.class.getName());
+-        this.baseList = new ArrayList<String>();
+-        this.groups = new TreeSet<SameCpuGroup>(comparator);
+-        this.context = context;
+-    }
+-
+-    @Override
+-    protected void serviceInit(Configuration conf) throws Exception {
+-        this.conf = conf;
+-        LOG.info("GCoreManagerService is initing...");
+-        constructBaseGpuList();
+-        super.serviceInit(conf);
+-    }
+-
+-    @Override
+-    protected void serviceStart() throws Exception {
+-        super.serviceStart();
+-    }
+-
+-    @Override
+-    protected void serviceStop() throws Exception {
+-        super.serviceStop();
+-    }
+-
+-    @Override
+-    public synchronized String aquireGCore(int num) throws Exception {
+-        // parse topo and rebuild groups
+-        parseTopo();
+-        LOG.info("Before assign: " + baseList);
+-        if (num == 1) {
+-            // just peek one from baselist
+-            // first need exclude the group
+-            // ones.
+-            ArrayList<String> copy = new ArrayList<String>(baseList);
+-            for (SameCpuGroup group :  groups) {
+-                copy.removeAll(group.getMemberList());
+-            }
+-
+-            // leave single cores
+-            if (copy.size() != 0) {
+-                String candidate = copy.remove(0);
+-                // remove from baselist
+-                baseList.remove(candidate);
+-                LOG.info("After assign: " + baseList + " assigned a single core " + candidate);
+-                return candidate;
+-            } else {
+-                // There is no single ones
+-                // get 1 from groups
+-                if (groups.size() != 0) {
+-                    for (SameCpuGroup group : groups) {
+-                        for (String member : group.getMemberList()) {
+-                            baseList.remove(member);
+-                            LOG.info("After assign: " + baseList + " assigned a single core from a group " + member);
+-                            return member;
+-                        }
+-                    }
+-                } else {
+-                    LOG.warn("Maybe you config a bigger cores in this node, or cores isn`t be released.");
+-                    // throw new Exception("Maybe you config a bigger cores in this node, or cores isn`t be released." +
+-                    //         " and it is very serious.");
+-                    return "0";
+-                }
+-            }
+-        }
+-
+-        // assign group directly if require count
+-        // is bigger or equal group size
+-        // (1,1,2) and require 2 so assign
+-        // (2)
+-        // or
+-        // (1,4,6) and require 3 so assign
+-        // (3) from 4
+-        for (SameCpuGroup group : groups) {
+-            if (num <= group.getMemberSize()) {
+-                StringBuilder sb = new StringBuilder();
+-                for (String member : group.getMemberList()) {
+-                    baseList.remove(member);
+-                    sb.append(member);
+-                    sb.append(",");
+-                    // do not need remove group object here
+-                    num--;
+-                    if (num == 0) {
+-                        String assigned = sb.toString().substring(0, sb.length() - 1);
+-                        LOG.info("After assign: " + baseList + " assigned group cores " + assigned);
+-                        return assigned;
+-                    }
+-                }
+-            }
+-        }
+-
+-        // if there is no a group
+-        // which could fulfill the require
+-        // so begin compose the propose from
+-        // tail to head of the list
+-        // and if all groups could not fulfill
+-        // the require still, absorb single core
+-        // from baselist if have.
+-        ArrayList<SameCpuGroup> copy = new ArrayList<SameCpuGroup>(groups);
+-        Collections.sort(copy, anti_comparator);
+-        StringBuilder sb = new StringBuilder();
+-        out:
+-        for (SameCpuGroup group : copy) {
+-            if (group.getMemberSize() <= num) {
+-                baseList.removeAll(group.getMemberList());
+-                sb.append(group.getMembers());
+-                sb.append(",");
+-                num -= group.getMemberSize();
+-                if (num == 0)
+-                    break out;
+-            } else {
+-                // peek portion from group
+-                for (String member : group.getMemberList()) {
+-                    // remove from baselist
+-                    baseList.remove(member);
+-                    sb.append(member);
+-                    sb.append(",");
+-                    num--;
+-                    if (num == 0)
+-                        break out;
+-                }
+-            }
+-        }
+-
+-        if (num == 0) {
+-            String assigned = sb.toString().substring(0, sb.length() - 1);
+-            LOG.info("After assign: " + baseList + " assigned multi-group cores " + assigned);
+-            return assigned;
+-        } else {
+-            // peek single core
+-            // but for race condition yarn-site.xml
+-            // configs a bigger num of gcore than real
+-            // or gcore do not release before.
+-            if (baseList.size() < num) {
+-                num = baseList.size();
+-                LOG.warn("Maybe you config a bigger cores in this node, or cores isn`t be released.");
+-            }
+-            for (int i = 0; i < num; i++) {
+-                sb.append(baseList.remove(0));
+-                sb.append(",");
+-            }
+-
+-            if (sb.length() == 0) {
+-                // throw new Exception("Maybe you config a bigger cores in this node, or cores isn`t be released." +
+-                //         " and it is very serious.");
+-                return "0";
+-            }
+-            String assigned = sb.toString().substring(0, sb.length() - 1);
+-            LOG.info("After assign: " + baseList + " assigned multi-group and single cores " + assigned);
+-            return assigned;
+-        }
+-    }
+-
+-    @Override
+-    public synchronized boolean releaseGCore(String cores) {
+-        // just add cores return to baselist
+-        baseList.addAll(Arrays.asList(cores.split(",")));
+-        LOG.info("Release cores:" + cores);
+-        return true;
+-    }
+-
+-    private void constructBaseGpuList() throws Exception {
+-        // get gpus topo.
+-        String output = Shell.execCommand("/bin/sh navidia-smi topo --matrix");
+-        verfyOutput(output);
+-
+-        // remove other useless info
+-        for (String line : output.split("\n")) {
+-            if (line.startsWith("GPU")) {
+-                String coreId = line.split("\t")[0];
+-                baseList.add(coreId.replace("GPU", ""));
+-                LOG.info("Add gpu core " + coreId);
+-            }
+-        }
+-    }
+-
+-    private void parseTopo() throws Exception {
+-        // get gpus topo.
+-        String output = Shell.execCommand("/bin/sh navidia-smi topo --matrix");
+-        verfyOutput(output);
+-
+-        // remove other useless info
+-        StringBuilder sb = new StringBuilder();
+-        for (String line : output.split("\n")) {
+-            if (line.startsWith("GPU")) {
+-                sb.append(line);
+-                sb.append("\n");
+-            }
+-        }
+-
+-        // build tuple relations such as
+-        // 0-1 0-2 1-2
+-        Set<String> tuples = Sets.newTreeSet();
+-        int rowNum = 0;
+-        for (String sline : sb.toString().split("\n")) {
+-            String[] cells = sline.split("\t");
+-            for (int colNum = 1; colNum < cells.length - 1; colNum++) {
+-                if (!"SOC".equals(cells[colNum].trim()) && !"X".equals(cells[colNum].trim())) {
+-                    if (baseList.contains(rowNum + "")
+-                            && baseList.contains((colNum - 1) + "")) {
+-                        if (rowNum > colNum - 1) {
+-                            tuples.add((colNum - 1) + "-" + rowNum);
+-                        } else {
+-                            tuples.add(rowNum + "-" + (colNum - 1));
+-                        }
+-                    }
+-                }
+-            }
+-            rowNum++;
+-        }
+-
+-        // re-build the groups
+-        groups.clear();
+-
+-        next:
+-        for (String tuple : tuples) {
+-            for (SameCpuGroup group : groups) {
+-                for (String id : tuple.split("-")) {
+-                    if (group.isMember(id)) {
+-                        group.addMember(tuple.split("-")[1]);
+-                        continue next;// go to next tuple
+-                    }
+-                }
+-            }
+-            SameCpuGroup group = new SameCpuGroup(tuple);
+-            groups.add(group);
+-        }
+-    }
+-
+-    private void verfyOutput(String output) throws Exception {
+-        // just simple check manner
+-        Pattern pattern = Pattern.compile("Legend:");
+-        Matcher matcher = pattern.matcher(output);
+-        if (!matcher.find()) {
+-            throw new InvalidParameterException("Output do not contain valid topo.");
+-        }
+-    }
+-}
+diff --git a/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-nodemanager/src/main/java/org/apache/hadoop/yarn/server/nodemanager/containermanager/gpumanager/SameCpuGroup.java b/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-nodemanager/src/main/java/org/apache/hadoop/yarn/server/nodemanager/containermanager/gpumanager/SameCpuGroup.java
+deleted file mode 100644
+index 01aae7fc04..0000000000
+--- a/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-nodemanager/src/main/java/org/apache/hadoop/yarn/server/nodemanager/containermanager/gpumanager/SameCpuGroup.java
++++ /dev/null
+@@ -1,63 +0,0 @@
+-/**
+- * Licensed to the Apache Software Foundation (ASF) under one
+- * or more contributor license agreements.  See the NOTICE file
+- * distributed with this work for additional information
+- * regarding copyright ownership.  The ASF licenses this file
+- * to you under the Apache License, Version 2.0 (the
+- * "License"); you may not use this file except in compliance
+- * with the License.  You may obtain a copy of the License at
+- *
+- *     http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- *
+- * Also created by yuanfeng.
+- */
+-
+-package org.apache.hadoop.yarn.server.nodemanager.containermanager.gpumanager;
+-
+-import java.util.Set;
+-import java.util.TreeSet;
+-
+-public class SameCpuGroup {
+-    private StringBuilder members;
+-    private Set<String> memberlist;
+-
+-    public SameCpuGroup(String tuple) {
+-        members = new StringBuilder();
+-        memberlist = new TreeSet<String>();
+-        for (String member : tuple.split("-")) {
+-            members.append(member);
+-            members.append(",");
+-            memberlist.add(member);
+-        }
+-    }
+-
+-    public void addMember(String member) {
+-            members.append(member);
+-            memberlist.add(member);
+-    }
+-
+-    public int getMemberSize() {
+-        return memberlist.size();
+-    }
+-
+-    public String getMembers() {
+-        return members.toString().substring(0, members.length() - 1);
+-    }
+-
+-    public Set<String> getMemberList() { return memberlist; }
+-
+-    public boolean isMember(String unCheck) {
+-        return memberlist.contains(unCheck);
+-    }
+-
+-    @Override
+-    public String toString() {
+-        return members.toString().substring(0, members.length() - 1);
+-    }
+-}
+diff --git a/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-nodemanager/src/main/java/org/apache/hadoop/yarn/server/nodemanager/containermanager/launcher/ContainerLaunch.java b/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-nodemanager/src/main/java/org/apache/hadoop/yarn/server/nodemanager/containermanager/launcher/ContainerLaunch.java
+index 306ba7460e..332ebc4884 100644
+--- a/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-nodemanager/src/main/java/org/apache/hadoop/yarn/server/nodemanager/containermanager/launcher/ContainerLaunch.java
++++ b/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-nodemanager/src/main/java/org/apache/hadoop/yarn/server/nodemanager/containermanager/launcher/ContainerLaunch.java
+@@ -61,7 +61,6 @@
+ import org.apache.hadoop.yarn.server.nodemanager.ContainerExecutor.Signal;
+ import org.apache.hadoop.yarn.server.nodemanager.Context;
+ import org.apache.hadoop.yarn.server.nodemanager.LocalDirsHandlerService;
+-import org.apache.hadoop.yarn.server.nodemanager.NodeManager;
+ import org.apache.hadoop.yarn.server.nodemanager.containermanager.ContainerManagerImpl;
+ import org.apache.hadoop.yarn.server.nodemanager.containermanager.application.Application;
+ import org.apache.hadoop.yarn.server.nodemanager.containermanager.container.Container;
+@@ -70,7 +69,6 @@
+ import org.apache.hadoop.yarn.server.nodemanager.containermanager.container.ContainerEventType;
+ import org.apache.hadoop.yarn.server.nodemanager.containermanager.container.ContainerExitEvent;
+ import org.apache.hadoop.yarn.server.nodemanager.containermanager.container.ContainerState;
+-import org.apache.hadoop.yarn.server.nodemanager.containermanager.gpumanager.GCoreManager;
+ import org.apache.hadoop.yarn.server.nodemanager.containermanager.localizer.ContainerLocalizer;
+ import org.apache.hadoop.yarn.server.nodemanager.containermanager.localizer.ResourceLocalizationService;
+ import org.apache.hadoop.yarn.server.nodemanager.WindowsSecureContainerExecutor;
+@@ -267,16 +265,6 @@ public Integer call() {
+             ApplicationConstants.CONTAINER_TOKEN_FILE_ENV_NAME, 
+             new Path(containerWorkDir, 
+                 FINAL_CONTAINER_TOKENS_FILE).toUri().getPath());
+-
+-        if (container.getResource().getGpuCores() > 0) {
+-          // add gpu core setting of tensorflow
+-          GCoreManager gm = ((ContainerManagerImpl) this.context.getContainerManager()).getGCoreManager();
+-          String assigned = gm.aquireGCore(container.getResource().getGpuCores());
+-          environment.put(ApplicationConstants.GPU_BIND, assigned);
+-          // record container to gcores mapping in context*NMContext*
+-          ((NodeManager.NMContext)context).getContainerToGcores().put(containerIdStr, assigned);
+-        }
+-
+         // Sanitize the container's environment
+         sanitizeEnv(environment, containerWorkDir, appDirs, containerLogDirs,
+           localResources, nmPrivateClasspathJarDir);
+diff --git a/s101plugin.state b/s101plugin.state
+index 048a11c291..ea81c6467a 100644
+--- a/s101plugin.state
++++ b/s101plugin.state
+@@ -1,5 +1,5 @@
+ <?xml version="1.0"?>
+-<structure101-builder version="1.0" format="state" vendor="headway" generated-at="Sat Aug 26 21:40:09 CST 2017">
++<structure101-builder version="1.0" format="state" vendor="headway" generated-at="Thu Aug 17 16:22:05 CST 2017">
+   <builder-settings includeExternals="true" diagramsTimeStamp="0" actionsTimeStamp="0" settingsCheckInterval="5000" classPath="" compilationPath="">
+     <s101plugin-properties>
+       <isEnabled value="false"/>
