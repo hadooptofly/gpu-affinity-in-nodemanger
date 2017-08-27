@@ -13,3 +13,8 @@ Example:
     a container need 3 gpu: got 3 from cpu1
     a container need 1 gpu: got that sigle one.
   
+ when got the gpu assigned from mamanger above,
+ set this to a env in launch context of container,
+ and when container get launched it will bind the 
+ corresponding gpu.
+ 
