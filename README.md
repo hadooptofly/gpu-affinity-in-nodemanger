@@ -5,7 +5,7 @@ cores all are on a same cpu, this is gpu affinity.
 ![image](https://github.com/hadooptofly/pictures/blob/master/PastedGraphic-1.png)
 in picture above, which two core tuple result is "SOC" mean they are not on a 
 same cpu, others mean they are on same cpu.
-
+```xml
 this repo is do this gpu management:
 Example:
     8 gpu cores: 1 is sigle, 2 is on cpu0, 5 is on cpu1
