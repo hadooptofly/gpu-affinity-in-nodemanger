@@ -1,20 +1,3 @@
-diff --git a/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/main/java/org/apache/hadoop/mapred/TaskAttemptListenerImpl.java b/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/main/java/org/apache/hadoop/mapred/TaskAttemptListenerImpl.java
-index 12e4bed7fa..7ed6607e4a 100644
---- a/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/main/java/org/apache/hadoop/mapred/TaskAttemptListenerImpl.java
-+++ b/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/main/java/org/apache/hadoop/mapred/TaskAttemptListenerImpl.java
-@@ -279,10 +279,8 @@ public void shuffleError(TaskAttemptID taskAttemptID, String message) throws IOE
-   public MapTaskCompletionEventsUpdate getMapCompletionEvents(
-       JobID jobIdentifier, int startIndex, int maxEvents,
-       TaskAttemptID taskAttemptID) throws IOException {
--    if (LOG.isDebugEnabled()) {
--      LOG.debug("MapCompletionEvents request from " + taskAttemptID.toString()
--              + ". startIndex " + startIndex + " maxEvents " + maxEvents);
--    }
-+    LOG.info("MapCompletionEvents request from " + taskAttemptID.toString()
-+        + ". startIndex " + startIndex + " maxEvents " + maxEvents);
- 
-     // TODO: shouldReset is never used. See TT. Ask for Removal.
-     boolean shouldReset = false;
 diff --git a/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-api/src/main/java/org/apache/hadoop/yarn/api/ApplicationConstants.java b/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-api/src/main/java/org/apache/hadoop/yarn/api/ApplicationConstants.java
 index 6cff786a5f..b2d765ae30 100644
 --- a/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-api/src/main/java/org/apache/hadoop/yarn/api/ApplicationConstants.java
@@ -663,14 +646,3 @@ index 306ba7460e..332ebc4884 100644
          // Sanitize the container's environment
          sanitizeEnv(environment, containerWorkDir, appDirs, containerLogDirs,
            localResources, nmPrivateClasspathJarDir);
-diff --git a/s101plugin.state b/s101plugin.state
-index 048a11c291..ea81c6467a 100644
---- a/s101plugin.state
-+++ b/s101plugin.state
-@@ -1,5 +1,5 @@
- <?xml version="1.0"?>
--<structure101-builder version="1.0" format="state" vendor="headway" generated-at="Sat Aug 26 21:40:09 CST 2017">
-+<structure101-builder version="1.0" format="state" vendor="headway" generated-at="Thu Aug 17 16:22:05 CST 2017">
-   <builder-settings includeExternals="true" diagramsTimeStamp="0" actionsTimeStamp="0" settingsCheckInterval="5000" classPath="" compilationPath="">
-     <s101plugin-properties>
-       <isEnabled value="false"/>
